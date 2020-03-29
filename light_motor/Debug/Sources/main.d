@@ -17,6 +17,7 @@ Sources/main.o: ../Sources/main.c \
  C:\Freescale\KSDK_1.3.0\platform\hal\inc/fsl_sim_hal.h \
  c:\freescale\ksdk_1.3.0\platform\hal\src\sim\mk64f12\fsl_sim_hal_mk64f12.h \
  C:\Freescale\KSDK_1.3.0\platform\hal\inc/fsl_adc16_hal.h \
+ C:\Freescale\KSDK_1.3.0\platform\hal\inc/fsl_PIT_hal.h \
  C:\Freescale\KSDK_1.3.0\platform\hal\inc/fsl_dac_hal.h
 
 ../SDK/platform/devices/fsl_device_registers.h:
@@ -54,5 +55,7 @@ C:\Freescale\KSDK_1.3.0\platform\hal\inc/fsl_sim_hal.h:
 c:\freescale\ksdk_1.3.0\platform\hal\src\sim\mk64f12\fsl_sim_hal_mk64f12.h:
 
 C:\Freescale\KSDK_1.3.0\platform\hal\inc/fsl_adc16_hal.h:
+
+C:\Freescale\KSDK_1.3.0\platform\hal\inc/fsl_PIT_hal.h:
 
 C:\Freescale\KSDK_1.3.0\platform\hal\inc/fsl_dac_hal.h:
