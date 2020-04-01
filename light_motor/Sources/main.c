@@ -13,6 +13,69 @@
 #include "float.h"
 #include "fsl_dac_hal.h"
 #include "stdbool.h"
+//LEDs sub functions
+typedef enum led_state {
+	OFF = 0,
+	LED_MAN,
+	LED_TRACK,
+	LED_MOVE,
+	LED_CHARGE,
+	LED_SLEEP
+} led_state_t;
+
+static inline void ledBlueOn(){
+	GPIO_HAL_ClearPinOutput(PTB, 22);
+}
+static inline void ledBlueOff(){
+	GPIO_HAL_SetPinOutput(PTB, 22);
+}
+static inline void ledRedOn(){
+	GPIO_HAL_ClearPinOutput(PTB, 21);
+}
+static inline void ledRedOff(){
+	GPIO_HAL_SetPinOutput(PTB, 21);
+}
+static inline void ledGreenOn(){
+	GPIO_HAL_ClearPinOutput(PTE, 26);
+}
+static inline void ledGreenOff(){
+	GPIO_HAL_SetPinOutput(PTE, 26);
+}
+
+void ledUpdate(led_state_t state){
+	switch(state){
+	case LED_MAN: // Purple
+		ledBlueOn();
+		ledRedOn();
+		ledGreenOff();
+		break;
+	case LED_TRACK: // Blue
+		ledBlueOn();
+		ledRedOff();
+		ledGreenOff();
+		break;
+	case LED_MOVE: // Red
+		ledRedOn();
+		ledBlueOff();
+		ledGreenOff();
+		break;
+	case LED_CHARGE: // Green
+		ledBlueOff();
+		ledRedOff();
+		ledGreenOn();
+		break;
+	case LED_SLEEP: // Yellow
+		ledBlueOff();
+		ledRedOn();
+		ledGreenOn();
+		break;
+	case OFF: // BLACK
+	default: // Also black
+		ledBlueOff();
+		ledRedOff();
+		ledGreenOff();
+	}
+}
 
 //Configuring the ADC Channel
 //Developping the Channel Configuration Param for Channel 1
@@ -86,20 +149,41 @@ void UART0_Init(){
 void GPIO_Init(){
 	SIM_HAL_EnableClock(SIM, kSimClockGatePortB);
 	SIM_HAL_EnableClock(SIM, kSimClockGatePortC);
+	SIM_HAL_EnableClock(SIM, kSimClockGatePortE);
 
 	//set up our mux switches
 	PORT_HAL_SetMuxMode(PORTB, 2, kPortMuxAsGpio);
 	PORT_HAL_SetMuxMode(PORTB, 3, kPortMuxAsGpio);
 	PORT_HAL_SetMuxMode(PORTB, 10, kPortMuxAsGpio);
 
-	//set up our toggle switch
+	//Set up LEDS
+	PORT_HAL_SetMuxMode(PORTB, 22, kPortMuxAsGpio);
+	PORT_HAL_SetMuxMode(PORTB, 21, kPortMuxAsGpio);
+	PORT_HAL_SetMuxMode(PORTB, 26, kPortMuxAsGpio);
+
+	//set up our manual toggle switch
 	PORT_HAL_SetMuxMode(PORTC, 10, kPortMuxAsGpio);
 
+	//Set up our sleep switch
+	PORT_HAL_SetMuxMode(PORTC,5,kPortMuxAsGpio);
+
 	//set the pins DDR
+	//MUX
 	GPIO_HAL_SetPinDir(PTB, 2, kGpioDigitalOutput);
 	GPIO_HAL_SetPinDir(PTB, 3, kGpioDigitalOutput);
 	GPIO_HAL_SetPinDir(PTB, 10, kGpioDigitalOutput);
+	//Manual Mode Switch
 	GPIO_HAL_SetPinDir(PTC, 10, kGpioDigitalInput);
+	//Sleep Mode Switch
+	GPIO_HAL_SetPinDir(PTC,5,kGpioDigitalInput);
+
+	//LEDs
+	ledBlueOff();
+	ledGreenOff();
+	ledRedOff();
+	GPIO_HAL_SetPinDir(PTB, 22, kGpioDigitalOutput);
+	GPIO_HAL_SetPinDir(PTB, 21, kGpioDigitalOutput);
+	GPIO_HAL_SetPinDir(PTE, 26, kGpioDigitalOutput);
 
 	//initial values don't matter on PTB2, PTB3, PTB10
 }
@@ -126,7 +210,7 @@ void ADC0_Init(){
 
 }
 
-void DAC0_init(){
+void DAC0_Init(){
 	SIM_HAL_EnableClock(SIM,kSimClockGateDac0);
 	DAC_HAL_Enable(DAC0);
 	DAC_HAL_Init(DAC0);
@@ -142,34 +226,27 @@ uint16_t ADC0_Convert(){
 	return (ADC16_HAL_GetChnConvValue(ADC0, 0)); //Get the RAW value
 }
 
+
 void UART0_PutChar(uint8_t data){
 	while(UART_HAL_GetStatusFlag(UART0,kUartTxDataRegEmpty)==0);
 	UART_HAL_Putchar(UART0, data); //send an 8 bit character
 }
 
-char UART0_GetChar(){
-	uint8_t UART0_Data;
-	if(UART_HAL_GetStatusFlag(UART0,kUartRxBuffEmpty)==1)
-		return (char)0;
-	UART_HAL_Getchar(UART0, &UART0_Data); //where do read the data from?
-	return (char)UART0_Data;
-}
+
 
 void UART0_PutString(char* string){
 	while(*string != 0){
 		UART0_PutChar(*string);
-		string++;}
+		string++;
+	}
 }
 
-void initPIT(){
+void PIT_Init(){
 	SIM_HAL_EnableClock(SIM, kSimClockGatePit0);
 	PIT_HAL_Enable(PIT);
-	PIT_HAL_SetTimerPeriodByCount(PIT,1,2097152); //clock freq * 100 ms
+	PIT_HAL_SetTimerPeriodByCount(PIT,1,20971520); //clock freq * 1000 ms (1 second)
 	PIT_HAL_StartTimer(PIT,1);
-
-
 }
-//now for the project specific code
 
 void Gather_Data(uint16_t values[8] ){
 	for(int i = 0; i<8; i++){
@@ -260,61 +337,107 @@ float getPosition(uint16_t Val[8], int ind[8]){ //Creating a weighted average
 	float num;
 	float pos;
 	denom = (Val[ind[0]] + Val[ind[1]]); //sum for the denominator
-	num = (Val[ind[0]]*ind[0])+ (Val[ind[1]]*ind[1]); //sum for numerator
+	num = (Val[ind[0]]*ind[0]) + (Val[ind[1]]*ind[1]); //sum for numerator
 	pos = num/denom; //this will give a position
 	return(pos);
 }
 
-void SendToDAC(float position){ // Should be run at a fixed-rate to provide integral control
-	char buf[50];
+uint16_t SendToDAC(float position){ // Should be run at a fixed-rate to provide integral control
 	position = 3.5f - position; //taking the position and minusing it from the average desired index average
 	static float unquantized_output = 2047; // Default initialization of integral to middle position
 	unquantized_output += position * 0.125f; // Integrate by multiplying position error by gain
-	uint16_t output = (uint16_t) unquantized_output; // Typecase our float integral output
-	if(output > 0x8FF){
-		output = 0x8FF; // Limit output value to 12-bit DAC
+	if(unquantized_output > 0x8FF){
+		unquantized_output = 0x8FF; // If the output is greater than 12 bits, force it to 12 bits
 	}
+	else if(unquantized_output < 0){
+		unquantized_output = 0; //If the output is less than 0, force it to 0
+	}
+	uint16_t output = (uint16_t) unquantized_output; // Typecase our float integral output
 
 	DAC_HAL_SetBuffValue(DAC0,0, output); // Write output to DAC
-	sprintf(buf, "Position to go to is: %d\r\n",output );
+	return(output);
+}
+
+uint16_t SendToDACMan(uint16_t position){
+	if(position > 0x8FF){
+		position = 0x8FF;
+	}
+
+	if(position < 0){
+		position = 0;
+
+	}
+	DAC_HAL_SetBuffValue(DAC0,0, position); // Write output to DAC
+	return(position);
+}
+
+static inline void clearUart(){
+	char buf[] = {0x1B, '[', '2', 'J', 0x00};
 	UART0_PutString(buf);
 }
 
 int main(void)
 {
-
-
 	char buf[50];
-	uint16_t Values[] = {1 ,8 ,7 ,5, 4 , 5, 9,14};
+	uint16_t Values[8];
+	uint16_t DAC_Sent;
+	uint16_t Manual;
 	int index[8];
+	int flag = 0;
 	float pos;
 	UART0_Init(); //Initialize UART0 for PUTTY
 	ADC1_Init();//Initialize ADC1
-	initPIT(); //Initialize PIT
-	DAC0_init(); //Initialize DAC
+	ADC0_Init(); //Initialize ADC0
+	PIT_Init(); //Initialize PIT
+	DAC0_Init(); //Initialize DAC
+	GPIO_Init();//Initialize GPIO
+	//reseting the PuTTY terminal
+	clearUart();
 
-	UART0_PutChar('\r');
-	UART0_PutChar('\n');
-	for(int i = 0; i<8; i++){
-			sprintf(buf, "%d \r\n", Values[i]);
-			UART0_PutString(buf);
-		}
-
-
-
-
-
-
+	//MAIN INFINITE LOOP
 	while(1){
-
-		selectionSort(Values,index);
-		pos = getPosition(Values,index);
-		if(PIT_HAL_IsIntPending(PIT,1)){
-			SendToDAC(pos);
-			PIT_HAL_ClearIntFlag(PIT,1);
+		if(GPIO_HAL_ReadPinInput(PTC,5)){ //Check sleep mode first as it will take priority
+			ledUpdate(LED_SLEEP);
+			if(!flag){
+			snprintf(buf, 50, "Going to Sleep...\r\n");
+			UART0_PutString(buf);
+			flag = 1;
+			}
+		}
+		else if(!GPIO_HAL_ReadPinInput(PTC,10)){ //If the manual mode is not activated
+			flag = 0;
+			if(PIT_HAL_IsIntPending(PIT,1)){
+				clearUart();
+				snprintf(buf, 50, "Gathering Data...\r\n");
+				UART0_PutString(buf);
+				ledUpdate(LED_CHARGE);
+				Gather_Data(Values);
+				selectionSort(Values,index);
+				pos = getPosition(Values,index);
+				ledUpdate(LED_TRACK);
+				DAC_Sent = SendToDAC(pos);
+				ledUpdate(LED_MOVE);
+				PIT_HAL_ClearIntFlag(PIT,1);
+				snprintf(buf, 50, "Motor moving to %d", DAC_Sent);
+				UART0_PutString(buf);
+			}
+		}
+		else{
+			flag = 0;
+			ledUpdate(LED_MAN);
+			if(PIT_HAL_IsIntPending(PIT,1)){
+				clearUart();
+				snprintf(buf, 50, "Gathering Data...\r\n");
+				Manual = ADC1_Convert();
+				DAC_Sent = SendToDACMan(Manual);
+				PIT_HAL_ClearIntFlag(PIT,1);
+				snprintf(buf, 50, "Motor moving to %d", DAC_Sent);
+			}
 		}
 	}
-	return(-1);
-
+	return -1; //If we get here... something went wrong... plz help
 }
+
+
+
 
