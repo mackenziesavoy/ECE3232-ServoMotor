@@ -24,16 +24,16 @@ typedef enum led_state {
 } led_state_t;
 
 static inline void ledBlueOn(){
-	GPIO_HAL_ClearPinOutput(PTB, 22);
-}
-static inline void ledBlueOff(){
-	GPIO_HAL_SetPinOutput(PTB, 22);
-}
-static inline void ledRedOn(){
 	GPIO_HAL_ClearPinOutput(PTB, 21);
 }
-static inline void ledRedOff(){
+static inline void ledBlueOff(){
 	GPIO_HAL_SetPinOutput(PTB, 21);
+}
+static inline void ledRedOn(){
+	GPIO_HAL_ClearPinOutput(PTB, 22);
+}
+static inline void ledRedOff(){
+	GPIO_HAL_SetPinOutput(PTB, 22);
 }
 static inline void ledGreenOn(){
 	GPIO_HAL_ClearPinOutput(PTE, 26);
@@ -159,7 +159,7 @@ void GPIO_Init(){
 	//Set up LEDS
 	PORT_HAL_SetMuxMode(PORTB, 22, kPortMuxAsGpio);
 	PORT_HAL_SetMuxMode(PORTB, 21, kPortMuxAsGpio);
-	PORT_HAL_SetMuxMode(PORTB, 26, kPortMuxAsGpio);
+	PORT_HAL_SetMuxMode(PORTE, 26, kPortMuxAsGpio);
 
 	//set up our manual toggle switch
 	PORT_HAL_SetMuxMode(PORTC, 10, kPortMuxAsGpio);
@@ -346,8 +346,8 @@ uint16_t SendToDAC(float position){ // Should be run at a fixed-rate to provide 
 	position = 3.5f - position; //taking the position and minusing it from the average desired index average
 	static float unquantized_output = 2047; // Default initialization of integral to middle position
 	unquantized_output += position * 0.125f; // Integrate by multiplying position error by gain
-	if(unquantized_output > 0x8FF){
-		unquantized_output = 0x8FF; // If the output is greater than 12 bits, force it to 12 bits
+	if(unquantized_output > 0xFFF){
+		unquantized_output = 0xFFF; // If the output is greater than 12 bits, force it to 12 bits
 	}
 	else if(unquantized_output < 0){
 		unquantized_output = 0; //If the output is less than 0, force it to 0
@@ -359,8 +359,8 @@ uint16_t SendToDAC(float position){ // Should be run at a fixed-rate to provide 
 }
 
 uint16_t SendToDACMan(uint16_t position){
-	if(position > 0x8FF){
-		position = 0x8FF;
+	if(position > 0xFFF){
+		position = 0xFFF;
 	}
 
 	if(position < 0){
@@ -399,12 +399,12 @@ int main(void)
 		if(GPIO_HAL_ReadPinInput(PTC,5)){ //Check sleep mode first as it will take priority
 			ledUpdate(LED_SLEEP);
 			if(!flag){
-			snprintf(buf, 50, "Going to Sleep...\r\n");
-			UART0_PutString(buf);
-			flag = 1;
+				snprintf(buf, 50, "Going to Sleep...\r\n");
+				UART0_PutString(buf);
+				flag = 1;
 			}
 		}
-		else if(!GPIO_HAL_ReadPinInput(PTC,10)){ //If the manual mode is not activated
+		else if(GPIO_HAL_ReadPinInput(PTC,10) == 0){ //If the manual mode is not activated
 			flag = 0;
 			if(PIT_HAL_IsIntPending(PIT,1)){
 				clearUart();
@@ -420,7 +420,9 @@ int main(void)
 				PIT_HAL_ClearIntFlag(PIT,1);
 				snprintf(buf, 50, "Motor moving to %d", DAC_Sent);
 				UART0_PutString(buf);
+
 			}
+
 		}
 		else{
 			flag = 0;
@@ -432,11 +434,11 @@ int main(void)
 				DAC_Sent = SendToDACMan(Manual);
 				PIT_HAL_ClearIntFlag(PIT,1);
 				snprintf(buf, 50, "Motor moving to %d", DAC_Sent);
+				ledUpdate(LED_MAN);
 			}
 		}
+		return -1; //If we get here... something went wrong... plz help
 	}
-	return -1; //If we get here... something went wrong... plz help
-}
 
 
 
