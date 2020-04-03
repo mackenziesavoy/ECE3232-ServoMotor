@@ -342,7 +342,7 @@ float getPosition(uint16_t Val[8], int ind[8]){ //Creating a weighted average
 	return(pos);
 }
 
-uint16_t SendToDAC(float position){ // Should be run at a fixed-rate to provide integral control
+float SendToDAC(float position){ // Should be run at a fixed-rate to provide integral control
 	position = 3.5f - position; //taking the position and minusing it from the average desired index average
 	static float unquantized_output = 2047; // Default initialization of integral to middle position
 	unquantized_output += position * 0.125f; // Integrate by multiplying position error by gain
@@ -355,7 +355,7 @@ uint16_t SendToDAC(float position){ // Should be run at a fixed-rate to provide 
 	uint16_t output = (uint16_t) unquantized_output; // Typecase our float integral output
 
 	DAC_HAL_SetBuffValue(DAC0,0, output); // Write output to DAC
-	return(output);
+	return(position);
 }
 
 uint16_t SendToDACMan(uint16_t position){
@@ -365,7 +365,6 @@ uint16_t SendToDACMan(uint16_t position){
 
 	if(position < 0){
 		position = 0;
-
 	}
 	DAC_HAL_SetBuffValue(DAC0,0, position); // Write output to DAC
 	return(position);
@@ -380,7 +379,7 @@ int main(void)
 {
 	char buf[50];
 	uint16_t Values[8];
-	uint16_t DAC_Sent;
+	float DAC_Sent;
 	uint16_t Manual;
 	int index[8];
 	int flag = 0;
@@ -396,7 +395,7 @@ int main(void)
 
 	//MAIN INFINITE LOOP
 	while(1){
-		if(GPIO_HAL_ReadPinInput(PTC,5)){ //Check sleep mode first as it will take priority
+		if(GPIO_HAL_ReadPinInput(PTC,5) != 0){ //Check sleep mode first as it will take priority
 			ledUpdate(LED_SLEEP);
 			if(!flag){
 				snprintf(buf, 50, "Going to Sleep...\r\n");
@@ -406,39 +405,45 @@ int main(void)
 		}
 		else if(GPIO_HAL_ReadPinInput(PTC,10) == 0){ //If the manual mode is not activated
 			flag = 0;
-			if(PIT_HAL_IsIntPending(PIT,1)){
-				clearUart();
-				snprintf(buf, 50, "Gathering Data...\r\n");
-				UART0_PutString(buf);
+			while(1){ // creating infinite loop
+				if(PIT_HAL_IsIntPending(PIT,1)){
+					clearUart();
+					ledUpdate(LED_TRACK);
+					snprintf(buf, 50, "Gathering Data...\r\n");
+					UART0_PutString(buf);
+					Gather_Data(Values);
+					selectionSort(Values,index);
+					pos = getPosition(Values,index);
+					ledUpdate(LED_MOVE);
+					DAC_Sent = SendToDAC(pos);
+					if(DAC_Sent < 0.25){
+
+						break; //If the error in our position is less than 25%
+
+					}
+				}
 				ledUpdate(LED_CHARGE);
-				Gather_Data(Values);
-				selectionSort(Values,index);
-				pos = getPosition(Values,index);
-				ledUpdate(LED_TRACK);
-				DAC_Sent = SendToDAC(pos);
-				ledUpdate(LED_MOVE);
 				PIT_HAL_ClearIntFlag(PIT,1);
 				snprintf(buf, 50, "Motor moving to %d", DAC_Sent);
 				UART0_PutString(buf);
-
 			}
 
 		}
+
 		else{
 			flag = 0;
 			ledUpdate(LED_MAN);
-			if(PIT_HAL_IsIntPending(PIT,1)){
-				clearUart();
-				snprintf(buf, 50, "Gathering Data...\r\n");
-				Manual = ADC1_Convert();
-				DAC_Sent = SendToDACMan(Manual);
-				PIT_HAL_ClearIntFlag(PIT,1);
-				snprintf(buf, 50, "Motor moving to %d", DAC_Sent);
-				ledUpdate(LED_MAN);
-			}
+			clearUart();
+			snprintf(buf, 50, "Gathering Data...\r\n");
+			Manual = ADC1_Convert();
+			DAC_Sent = SendToDACMan(Manual);
+			PIT_HAL_ClearIntFlag(PIT,1);
+			snprintf(buf, 50, "Motor moving to %d", DAC_Sent);
+			ledUpdate(LED_MAN);
 		}
-		return -1; //If we get here... something went wrong... plz help
 	}
+	return -1; //If we get here... something went wrong... plz help
+}
 
 
 
