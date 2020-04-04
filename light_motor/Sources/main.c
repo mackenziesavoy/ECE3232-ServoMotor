@@ -402,15 +402,18 @@ int main(void)
 				UART0_PutString(buf);
 				flag = 1;
 			}
+			SendToDACMan(0); //Send the motor to its resting position
+
 		}
 		else if(GPIO_HAL_ReadPinInput(PTC,10) == 0){ //If the manual mode is not activated
 			flag = 0;
+			clearUart();
+			snprintf(buf, 50, "Auto Mode\r\n");
+			ledUpdate(LED_TRACK);
+			UART0_PutString(buf);
+
 			while(1){ // creating infinite loop
 				if(PIT_HAL_IsIntPending(PIT,1)){
-					clearUart();
-					ledUpdate(LED_TRACK);
-					snprintf(buf, 50, "Gathering Data...\r\n");
-					UART0_PutString(buf);
 					Gather_Data(Values);
 					selectionSort(Values,index);
 					pos = getPosition(Values,index);
@@ -419,8 +422,8 @@ int main(void)
 					if(DAC_Sent < 0.25){
 
 						break; //If the error in our position is less than 25%
-
 					}
+				//Return to the infinite loop until breakS
 				}
 				ledUpdate(LED_CHARGE);
 				PIT_HAL_ClearIntFlag(PIT,1);
@@ -439,7 +442,7 @@ int main(void)
 			DAC_Sent = SendToDACMan(Manual);
 			PIT_HAL_ClearIntFlag(PIT,1);
 			snprintf(buf, 50, "Motor moving to %d", DAC_Sent);
-			ledUpdate(LED_MAN);
+
 		}
 	}
 	return -1; //If we get here... something went wrong... plz help
